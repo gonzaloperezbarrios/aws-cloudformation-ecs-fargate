@@ -1,0 +1,207 @@
+{
+"AWSTemplateFormatVersion": "2010-09-09",
+    "Description": "ECS Fargate Version 1.0",   
+    "Parameters": {
+        "VpcName":{
+            "Description":"Seleccione el Id de la VPC, donde se creara la infraestructura",
+            "Type": "AWS::EC2::VPC::Id"
+        },
+        "subnets":{
+            "Description":"Seleccione el subnets, donde se creara la infraestructura",
+            "Type": "List<AWS::EC2::Subnet::Id>"
+        },        
+        "HealthCheckPathName":{
+            "Description":"Nombre del servivio que valida la salud del servidor (/api/health -> return 200)",
+            "Type":"String"
+        },
+        "ClusterName":{
+            "Description":"Nombre de Cluster que debe ser unico para cada region",
+            "Type":"String"
+        },
+        "ImageRepositoryECR":{
+            "Description":"Nombre de la imagen del repositorio ECR incluyendo el Tag con el que se identifica.",
+            "Type":"String"
+        },
+        "ServiceName":{
+            "Description":"Nombre del service que debe ser unico para cada region",
+            "Type":"String"
+        }
+    
+    },
+    "Resources": {
+        "TaskDefinition":
+        {
+            "Type" : "AWS::ECS::TaskDefinition",
+            "Properties" : 
+            {
+              "Cpu" : "512",
+              "ExecutionRoleArn" : "arn:aws:iam::${AWS::AccountId}:role/ecsTaskExecutionRole",
+              "Memory" : "1024",
+              "NetworkMode" : "awsvpc",
+              "RequiresCompatibilities":["FARGATE"],
+              "TaskRoleArn" : "arn:aws:iam::${AWS::AccountId}:role/ecsTaskExecutionRole",
+              "ContainerDefinitions" : [
+                {
+                    "Name":{"Ref":"ClusterName"},
+                    "Image":!Sub "${AWS::AccountId}.dkr.ecr.${AWS::Region}.amazonaws.com/${ImageRepositoryECR}",
+                    "Memory":"128",
+                    "Cpu":"0",
+                    "PortMappings": [{
+                          "HostPort": 80,
+                          "Protocol": "tcp",
+                          "ContainerPort": 80
+                        }],
+                    "Environment": [{
+                        "Name": "ASPNETCORE_ENVIRONMENT",
+                        "Value": "Development"
+                    }]
+                }  
+               ]
+            }
+        },
+
+        "ClusterResource":
+        {
+            "Type":"AWS::ECS::Cluster",
+            "Properties":{
+                "ClusterName": {"Ref":"ClusterName"}
+            }
+        },
+
+        "SecurityGroupBalancer":
+        {
+            "Type" : "AWS::EC2::SecurityGroup",
+            "Properties" : {
+               "GroupName" : { "Fn::Join": ["-",[ {"Ref": "ClusterName"},"-SG"] ] },
+               "GroupDescription" : "Security Group Balancer ECS/Fargate",
+               "SecurityGroupEgress" : [{
+                    "IpProtocol": "tcp",
+                    "CidrIp": "0.0.0.0/0",
+                    "FromPort": 0,
+                    "ToPort": 65535
+                }],
+               "SecurityGroupIngress" : [ {
+                    "IpProtocol": "tcp",
+                    "CidrIp": "0.0.0.0/0",
+                    "FromPort": 80,
+                    "ToPort": 80
+                }],
+               "VpcId" : {"Ref":"VpcName"}
+            }
+        },
+
+        "LoadBalancer":
+        {
+            "Type" : "AWS::ElasticLoadBalancingV2::LoadBalancer",
+            "DependsOn":["SecurityGroupBalancer"],
+            "Properties" : {    
+              "Name" : { "Fn::Join": ["-",[ {"Ref": "AWS::StackName"},"LoadBalancer"] ] },
+              "Scheme" : "internet-facing",
+              "SecurityGroups" : [ {"Ref":"SecurityGroupBalancer"}],
+              "Subnets" : {"Ref": "subnets"},
+              "Type" : "application"
+            }
+        },
+
+        "TargetGroup":
+        {
+            "Type" : "AWS::ElasticLoadBalancingV2::TargetGroup",
+            "Properties" : {
+                "HealthCheckPath" : {"Ref":"HealthCheckPathName"},
+                "HealthCheckPort" : "80",
+                "HealthCheckProtocol" : "HTTP",
+                "HealthCheckTimeoutSeconds" : 10,
+                "Name": {
+                    "Fn::Join": ["-",[ {"Ref": "AWS::StackName"},"TGService"] ]
+                },
+                "Port" : 80,
+                "Protocol" : "HTTP",
+                "VpcId" : {"Ref":"VpcName"}
+            }
+        },
+
+        "Listener": 
+        {
+            "Type": "AWS::ElasticLoadBalancingV2::Listener",
+            "Properties": {
+              "DefaultActions": [{
+                    "Type": "forward",
+                    "TargetGroupArn": { "Ref": "TargetGroup" }
+              }],
+              "LoadBalancerArn": { "Ref": "LoadBalancer" },
+              "Port" : "8787",
+              "Protocol": "HTTP"
+            }
+        },
+
+        "ListenerRuleService":
+        {
+            "Type" : "AWS::ElasticLoadBalancingV2::ListenerRule",
+            "DependsOn":["TargetGroup","Listener"],
+            "Properties" : {
+              "Actions" : [{
+                "Type": "forward",
+                "TargetGroupArn": { "Ref": "TargetGroup" }
+              }],
+              "Conditions" : [{
+                "Field" : "path-pattern",
+                "Values" : [{"Ref":"HealthCheckPathName"}]
+              }],
+              "ListenerArn" : { "Ref": "Listener" },
+              "Priority" : 2    
+            }
+        },  
+
+        "SecurityGroupServiceCluster":
+        {
+            "Type" : "AWS::EC2::SecurityGroup",
+            "Properties" : {
+               "GroupName" : { "Fn::Join": ["-",[ {"Ref": "ClusterName"},"-Service-SG"] ] },
+               "GroupDescription" : "Security Group Service Cluster ECS/Fargate",
+               "SecurityGroupEgress" : [{
+                    "IpProtocol": "tcp",
+                    "CidrIp": "0.0.0.0/0",
+                    "FromPort": 0,
+                    "ToPort": 65535
+                }],
+               "SecurityGroupIngress" : [ {
+                    "IpProtocol": "tcp",
+                    "CidrIp": "0.0.0.0/0",
+                    "FromPort": 80,
+                    "ToPort": 80
+                }],
+               "VpcId" : {"Ref":"VpcName"}
+            }
+        },
+
+        "ServiceCluster":
+        {
+            "Type":"AWS::ECS::Service",
+            "DependsOn":["TaskDefinition","ClusterResource","ListenerRuleService","SecurityGroupServiceCluster"],
+            "Properties":{
+                "TaskDefinition":{"Ref":"TaskDefinition"},
+                "DesiredCount":"2",
+                "ServiceName":{"Ref":"ServiceName"},
+                "Cluster":{"Ref":"ClusterName"},
+                "LaunchType":"FARGATE",
+                "Role" : "/ecsServiceRole",
+                "LoadBalancers":[
+                    {
+                        "ContainerName":"TaskDefinition",
+                        "ContainerPort":8787,
+                        "LoadBalancerName":{ "Ref" : "TargetGroup" }
+                    }
+                ],
+                "NetworkConfiguration":{
+                    "AwsvpcConfiguration":{
+                      "Subnets":{"Ref": "subnets"},
+                      "AssignPublicIp":"ENABLED",
+                      "SecurityGroups":[{ "Ref" : "SecurityGroupServiceCluster" }]
+                    }
+                }
+    
+            }
+        }
+
+    }
+}
