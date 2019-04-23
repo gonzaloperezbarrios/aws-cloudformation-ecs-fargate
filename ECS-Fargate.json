@@ -41,6 +41,7 @@
               "NetworkMode" : "awsvpc",
               "RequiresCompatibilities":["FARGATE"],
               "ExecutionRoleArn": "/ecsTaskExecutionRole",
+              "TaskRoleArn": "/ecsTaskExecutionRole",
               "ContainerDefinitions" : [
                 {
                     "Name":{ "Fn::Join": ["-",[ {"Ref": "AWS::StackName"},"Container"] ] },
@@ -55,9 +56,26 @@
                     "Environment": [{
                         "Name": "ASPNETCORE_ENVIRONMENT",
                         "Value": "Development"
-                    }]
+                    }],
+                    "LogConfiguration": {
+                        "LogDriver": "awslogs",
+                        "Options": {
+                          "awslogs-group": {"Fn::Join": [
+                              "", [
+                                  "/ecs/",
+                                  {
+                                      "Ref": "AWS::StackName"
+                                  },
+                                  "Task"                               
+                                ] 
+                              ]},
+                          "awslogs-region":{"Ref": "AWS::Region"},
+                          "awslogs-stream-prefix": "ecs"
+                        }
+                    }
                 }  
-               ]
+               ],
+              "Family":{"Fn::Join": ["-", [ {"Ref": "AWS::StackName"}, "Task"] ]}
             }
         },
 
