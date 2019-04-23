@@ -12,7 +12,8 @@
         },        
         "HealthCheckPathName":{
             "Description":"Nombre del servivio que valida la salud del servidor (/api/health -> return 200)",
-            "Type":"String"
+            "Type":"String",
+            "Default":"/api/health"
         },
         "ClusterName":{
             "Description":"Nombre de Cluster que debe ser unico para cada region",
@@ -20,7 +21,8 @@
         },
         "ImageRepositoryECR":{
             "Description":"Nombre de la imagen del repositorio ECR incluyendo el Tag con el que se identifica.",
-            "Type":"String"
+            "Type":"String",
+            "Default":"api-envios:latest"
         },
         "ServiceName":{
             "Description":"Nombre del service que debe ser unico para cada region",
@@ -35,16 +37,15 @@
             "Properties" : 
             {
               "Cpu" : "512",
-              "ExecutionRoleArn" : "arn:aws:iam::${AWS::AccountId}:role/ecsTaskExecutionRole",
               "Memory" : "1024",
               "NetworkMode" : "awsvpc",
               "RequiresCompatibilities":["FARGATE"],
-              "TaskRoleArn" : "arn:aws:iam::${AWS::AccountId}:role/ecsTaskExecutionRole",
+              "ExecutionRoleArn": "/ecsTaskExecutionRole",
               "ContainerDefinitions" : [
                 {
                     "Name":{ "Fn::Join": ["-",[ {"Ref": "AWS::StackName"},"Container"] ] },
                     "Image":!Sub "${AWS::AccountId}.dkr.ecr.${AWS::Region}.amazonaws.com/${ImageRepositoryECR}",
-                    "Memory":"128",
+                    "MemoryReservation":"128",
                     "Cpu":"0",
                     "PortMappings": [{
                           "HostPort": 80,
@@ -79,6 +80,12 @@
                     "CidrIp": "0.0.0.0/0",
                     "FromPort": 8787,
                     "ToPort": 8787
+                },
+                {
+                    "IpProtocol": "tcp",
+                    "CidrIpv6":"::/0",
+                    "FromPort": 8787,
+                    "ToPort": 8787
                 }],
                "VpcId" : {"Ref":"VpcName"}
             }
@@ -102,9 +109,8 @@
             "Type" : "AWS::ElasticLoadBalancingV2::TargetGroup",
             "Properties" : {
                 "HealthCheckPath" : {"Ref":"HealthCheckPathName"},
-                "HealthCheckPort" : "80",
                 "HealthCheckProtocol" : "HTTP",
-                "HealthCheckTimeoutSeconds" : 10,
+                "HealthyThresholdCount" : 10,
                 "Name": {
                     "Fn::Join": ["-",[ {"Ref": "AWS::StackName"},"TGService"] ]
                 },
@@ -160,33 +166,6 @@
                     "ToPort": 80
                 }],
                "VpcId" : {"Ref":"VpcName"}
-            }
-        },    
-
-        "ServiceCluster":
-        {
-            "Type":"AWS::ECS::Service",
-            "DependsOn":["ListenerRuleService"],
-            "Properties":{
-                "Cluster":{"Ref":"ClusterResource"},
-                "DesiredCount":2,
-                "LaunchType":"FARGATE",
-                "Role":"/AWSServiceRoleForECS",
-                "LoadBalancers":[{
-                        "ContainerName":{ "Fn::Join": ["-",[ {"Ref": "AWS::StackName"},"Container"] ] },
-                        "ContainerPort":80,
-                        "TargetGroupArn":{ "Ref" : "TargetGroup" }
-                }],
-                "NetworkConfiguration":{
-                    "AwsvpcConfiguration":{
-                        "Subnets":{"Ref": "subnets"},
-                        "AssignPublicIp":"ENABLED",
-                        "SecurityGroups":[{ "Ref" : "SecurityGroupServiceCluster" }]
-                    }
-                },
-                "SchedulingStrategy":"REPLICA",
-                "ServiceName":{"Ref":"ServiceName"},
-                "TaskDefinition":{"Ref":"TaskDefinition"}
             }
         }
     }
