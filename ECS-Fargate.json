@@ -31,18 +31,18 @@
     
     },
     "Resources": {
-       "LogGroupTaskDefinition": 
-       {
+        "LogGroupTaskDefinition": 
+        {
             "Type" : "AWS::Logs::LogGroup",
             "Properties" : {
-              "LogGroupName" : {"Fn::Join": [
+                "LogGroupName" : {"Fn::Join": [
                 "", [
                     "/ecs/",
                     {
                         "Ref": "AWS::StackName"
                     },
                     "-Task"                               
-                  ] 
+                    ] 
                 ]}
             }
         },
@@ -193,6 +193,32 @@
                     "ToPort": 80
                 }],
                "VpcId" : {"Ref":"VpcName"}
+            }
+        },    
+
+        "ServiceCluster":
+        {
+            "Type":"AWS::ECS::Service",
+            "DependsOn":["ListenerRuleService"],
+            "Properties":{
+                "Cluster":{"Ref":"ClusterResource"},
+                "DesiredCount":2,
+                "LaunchType":"FARGATE",
+                "LoadBalancers":[{
+                        "ContainerName":{ "Fn::Join": ["-",[ {"Ref": "AWS::StackName"},"Container"] ] },
+                        "ContainerPort":80,
+                        "TargetGroupArn":{ "Ref" : "TargetGroup" }
+                }],
+                "NetworkConfiguration":{
+                    "AwsvpcConfiguration":{
+                        "Subnets":{"Ref": "subnets"},
+                        "AssignPublicIp":"ENABLED",
+                        "SecurityGroups":[{ "Ref" : "SecurityGroupServiceCluster" }]
+                    }
+                },
+                "SchedulingStrategy":"REPLICA",
+                "ServiceName":{"Ref":"ServiceName"},
+                "TaskDefinition":{"Ref":"TaskDefinition"}
             }
         }
     }
