@@ -42,7 +42,7 @@
               "TaskRoleArn" : "arn:aws:iam::${AWS::AccountId}:role/ecsTaskExecutionRole",
               "ContainerDefinitions" : [
                 {
-                    "Name":{"Ref":"ClusterName"},
+                    "Name":{ "Fn::Join": ["-",[ {"Ref": "AWS::StackName"},"Container"] ] },
                     "Image":!Sub "${AWS::AccountId}.dkr.ecr.${AWS::Region}.amazonaws.com/${ImageRepositoryECR}",
                     "Memory":"128",
                     "Cpu":"0",
@@ -72,19 +72,13 @@
         {
             "Type" : "AWS::EC2::SecurityGroup",
             "Properties" : {
-               "GroupName" : { "Fn::Join": ["-",[ {"Ref": "ClusterName"},"-SG"] ] },
-               "GroupDescription" : "Security Group Balancer ECS/Fargate",
-               "SecurityGroupEgress" : [{
-                    "IpProtocol": "tcp",
-                    "CidrIp": "0.0.0.0/0",
-                    "FromPort": 0,
-                    "ToPort": 65535
-                }],
+               "GroupName" : { "Fn::Join": ["-",[ {"Ref": "AWS::StackName"},"LB-SG"] ] },
+               "GroupDescription" : "Security Group Balancer ECS/Fargate",              
                "SecurityGroupIngress" : [ {
                     "IpProtocol": "tcp",
                     "CidrIp": "0.0.0.0/0",
-                    "FromPort": 80,
-                    "ToPort": 80
+                    "FromPort": 8787,
+                    "ToPort": 8787
                 }],
                "VpcId" : {"Ref":"VpcName"}
             }
@@ -116,7 +110,8 @@
                 },
                 "Port" : 80,
                 "Protocol" : "HTTP",
-                "VpcId" : {"Ref":"VpcName"}
+                "VpcId" : {"Ref":"VpcName"},
+                "TargetType":"ip"
             }
         },
 
@@ -156,14 +151,8 @@
         {
             "Type" : "AWS::EC2::SecurityGroup",
             "Properties" : {
-               "GroupName" : { "Fn::Join": ["-",[ {"Ref": "ClusterName"},"-Service-SG"] ] },
+               "GroupName" : { "Fn::Join": ["-",[ {"Ref": "AWS::StackName"},"Service-SG"] ] },
                "GroupDescription" : "Security Group Service Cluster ECS/Fargate",
-               "SecurityGroupEgress" : [{
-                    "IpProtocol": "tcp",
-                    "CidrIp": "0.0.0.0/0",
-                    "FromPort": 0,
-                    "ToPort": 65535
-                }],
                "SecurityGroupIngress" : [ {
                     "IpProtocol": "tcp",
                     "CidrIp": "0.0.0.0/0",
@@ -172,36 +161,33 @@
                 }],
                "VpcId" : {"Ref":"VpcName"}
             }
-        },
+        },    
 
         "ServiceCluster":
         {
             "Type":"AWS::ECS::Service",
-            "DependsOn":["TaskDefinition","ClusterResource","ListenerRuleService","SecurityGroupServiceCluster"],
+            "DependsOn":["ListenerRuleService"],
             "Properties":{
-                "TaskDefinition":{"Ref":"TaskDefinition"},
-                "DesiredCount":"2",
-                "ServiceName":{"Ref":"ServiceName"},
-                "Cluster":{"Ref":"ClusterName"},
+                "Cluster":{"Ref":"ClusterResource"},
+                "DesiredCount":2,
                 "LaunchType":"FARGATE",
-                "Role" : "/ecsServiceRole",
-                "LoadBalancers":[
-                    {
-                        "ContainerName":"TaskDefinition",
-                        "ContainerPort":8787,
-                        "LoadBalancerName":{ "Ref" : "TargetGroup" }
-                    }
-                ],
+                "Role":"/AWSServiceRoleForECS",
+                "LoadBalancers":[{
+                        "ContainerName":{ "Fn::Join": ["-",[ {"Ref": "AWS::StackName"},"Container"] ] },
+                        "ContainerPort":80,
+                        "TargetGroupArn":{ "Ref" : "TargetGroup" }
+                }],
                 "NetworkConfiguration":{
                     "AwsvpcConfiguration":{
-                      "Subnets":{"Ref": "subnets"},
-                      "AssignPublicIp":"ENABLED",
-                      "SecurityGroups":[{ "Ref" : "SecurityGroupServiceCluster" }]
+                        "Subnets":{"Ref": "subnets"},
+                        "AssignPublicIp":"ENABLED",
+                        "SecurityGroups":[{ "Ref" : "SecurityGroupServiceCluster" }]
                     }
-                }
-    
+                },
+                "SchedulingStrategy":"REPLICA",
+                "ServiceName":{"Ref":"ServiceName"},
+                "TaskDefinition":{"Ref":"TaskDefinition"}
             }
         }
-
     }
 }
