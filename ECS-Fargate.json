@@ -31,9 +31,26 @@
     
     },
     "Resources": {
+       "LogGroupTaskDefinition": 
+       {
+            "Type" : "AWS::Logs::LogGroup",
+            "Properties" : {
+              "LogGroupName" : {"Fn::Join": [
+                "", [
+                    "/ecs/",
+                    {
+                        "Ref": "AWS::StackName"
+                    },
+                    "-Task"                               
+                  ] 
+                ]}
+            }
+        },
+
         "TaskDefinition":
         {
             "Type" : "AWS::ECS::TaskDefinition",
+            "DependsOn":["LogGroupTaskDefinition"],
             "Properties" : 
             {
               "Cpu" : "512",
@@ -60,15 +77,7 @@
                     "LogConfiguration": {
                         "LogDriver": "awslogs",
                         "Options": {
-                          "awslogs-group": {"Fn::Join": [
-                              "", [
-                                  "/ecs/",
-                                  {
-                                      "Ref": "AWS::StackName"
-                                  },
-                                  "-Task"                               
-                                ] 
-                              ]},
+                          "awslogs-group": {"Ref": "LogGroupTaskDefinition"},
                           "awslogs-region":{"Ref": "AWS::Region"},
                           "awslogs-stream-prefix": "ecs"
                         }
