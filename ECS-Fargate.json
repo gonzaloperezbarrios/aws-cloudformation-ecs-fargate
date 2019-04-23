@@ -3,20 +3,20 @@
     "Description": "ECS Fargate Version 1.0",   
     "Parameters": {
         "VpcName":{
-            "Description":"Seleccione el Id de la VPC, donde se creara la infraestructura",
+            "Description":"Seleccione la VPC, donde se creara la infraestructura.",
             "Type": "AWS::EC2::VPC::Id"
         },
         "subnets":{
-            "Description":"Seleccione el subnets, donde se creara la infraestructura",
+            "Description":"Seleccione las subnets (debe tener relacion con la VPC), donde se creara la infraestructura.",
             "Type": "List<AWS::EC2::Subnet::Id>"
         },        
         "HealthCheckPathName":{
-            "Description":"Nombre del servivio que valida la salud del servidor (/api/health -> return 200)",
+            "Description":"Nombre del servivio que valida la salud del servidor (/api/health --> retorna un 200)",
             "Type":"String",
             "Default":"/api/health"
         },
         "ClusterName":{
-            "Description":"Nombre de Cluster que debe ser unico para cada region",
+            "Description":"Nombre del Cluster, debe ser unico para cada region.",
             "Type":"String"
         },
         "ImageRepositoryECR":{
@@ -25,10 +25,16 @@
             "Default":"api-envios:latest"
         },
         "ServiceName":{
-            "Description":"Nombre del service que debe ser unico para cada region",
+            "Description":"Nombre del Service, debe ser unico para cada region",
             "Type":"String"
-        }
-    
+        },
+        "BalancerListenerPort" : {
+            "Default" : "8080",
+            "Description" : "TCP/IP puerto para el Listener del Balanceador. (Este puerto no puede estar en uso dentro la VPC)",
+            "Type" : "Number",
+            "MinValue" : "8080",
+            "MaxValue" : "9090"
+        }    
     },
     "Resources": {
         "LogGroupTaskDefinition": 
@@ -105,14 +111,14 @@
                "SecurityGroupIngress" : [ {
                     "IpProtocol": "tcp",
                     "CidrIp": "0.0.0.0/0",
-                    "FromPort": 8787,
-                    "ToPort": 8787
+                    "FromPort": { "Ref": "BalancerListenerPort" },
+                    "ToPort": { "Ref": "BalancerListenerPort" }
                 },
                 {
                     "IpProtocol": "tcp",
                     "CidrIpv6":"::/0",
-                    "FromPort": 8787,
-                    "ToPort": 8787
+                    "FromPort": { "Ref": "BalancerListenerPort" },
+                    "ToPort": { "Ref": "BalancerListenerPort" }
                 }],
                "VpcId" : {"Ref":"VpcName"}
             }
@@ -157,7 +163,7 @@
                     "TargetGroupArn": { "Ref": "TargetGroup" }
               }],
               "LoadBalancerArn": { "Ref": "LoadBalancer" },
-              "Port" : "8787",
+              "Port" : { "Ref": "BalancerListenerPort" },
               "Protocol": "HTTP"
             }
         },
